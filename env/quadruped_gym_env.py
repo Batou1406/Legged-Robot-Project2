@@ -156,7 +156,7 @@ class QuadrupedGymEnv(gym.Env):
       # [TODO] Set observation upper and lower ranges. What are reasonable limits?
       # Note 50 is arbitrary below, you may have more or less
       # On limite l'obervation à la limite physique + une tolérance epsilon. C'est un requirement
-      # de l'environnement RL et ça limite le complexity de la policy. 
+      # de l'environnement RL et ça limite le complexity de la policy.
       observation_high = (np.zeros(50) + OBSERVATION_EPS)
       observation_low = (np.zeros(50) -  OBSERVATION_EPS)
     else:
@@ -294,6 +294,7 @@ class QuadrupedGymEnv(gym.Env):
     for i in range(4):
       # get Jacobian and foot position in leg frame for leg i (see ComputeJacobianAndPosition() in quadruped.py)
       # [TODO]
+
       # desired foot position i (from RL above)
       Pd = np.zeros(3) # [TODO]
       # desired foot velocity i
