@@ -213,7 +213,7 @@ if __name__ == "__main__":
         # [TODO]
         v=J@dq[3*i:3*(i+1)] #mult bizarre parce que c'est pas que des numpy
         # Calculate torque contribution from Cartesian PD (Equation 5) [Make sure you are using matrix multiplications]
-        tau+=np.transpose(J)@(kpCartesian@(leg_xyz-pos)+kdCartesian@(np.zeros(3)-v)) # [TODO]
+        tau+=np.transpose(J)@(kpCartesian@(leg_xyz-pos) + kdCartesian@(np.zeros(3)-v)) # [TODO]
       # Set tau for legi in action vector
       action[3*i:3*i+3] = tau
 
