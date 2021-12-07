@@ -279,8 +279,8 @@ class QuadrupedGymEnv(gym.Env):
     # clip RL actions to be between -1 and 1 (standard RL technique)
     u = np.clip(actions,-1,1)
     # scale to corresponding desired foot positions (i.e. ranges in x,y,z we allow the agent to choose foot positions)
-    # [TODO: edit (do you think these should these be increased? How limiting is this?)]
-    scale_array = np.array([0.1, 0.05, 0.08]*4)
+    # [TODO: edit (do you think these should be increased? How limiting is this?)]
+    scale_array = np.array([0.1, 0.05, 0.08]*4) #the maximal action, the controller can take ?
     # add to nominal foot position in leg frame (what are the final ranges?)
     des_foot_pos = self._robot_config.NOMINAL_FOOT_POS_LEG_FRAME + scale_array*u
 
@@ -294,15 +294,18 @@ class QuadrupedGymEnv(gym.Env):
     for i in range(4):
       # get Jacobian and foot position in leg frame for leg i (see ComputeJacobianAndPosition() in quadruped.py)
       # [TODO]
+      J, pos = ComputeJacobianAndPosition(i) #legID as param
 
       # desired foot position i (from RL above)
-      Pd = np.zeros(3) # [TODO]
+      Pd = des_foot_pos[3*i:3*(i+1)] # [TODO]
+
       # desired foot velocity i
       vd = np.zeros(3)
+
       # foot velocity in leg frame i (Equation 2)
-      # [TODO]
+      v = J*qd # [TODO]
       # calculate torques with Cartesian PD (Equation 5) [Make sure you are using matrix multiplications]
-      tau = np.zeros(3) # [TODO]
+      tau =  np.transpose(J)@(kpCartesian@(Pd-pos) + kdCartesian@(vd-v))# [TODO]
 
       action[3*i:3*i+3] = tau
 
