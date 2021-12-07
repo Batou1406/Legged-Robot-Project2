@@ -322,7 +322,7 @@ class QuadrupedGymEnv(gym.Env):
     for i in range(4):
       # get Jacobian and foot position in leg frame for leg i (see ComputeJacobianAndPosition() in quadruped.py)
       # [TODO]
-      J, pos = ComputeJacobianAndPosition(i) #legID as param
+      J, pos = self.robot.ComputeJacobianAndPosition(i) #legID as param
 
       # desired foot position i (from RL above)
       Pd = des_foot_pos[3*i:3*(i+1)] # [TODO]
