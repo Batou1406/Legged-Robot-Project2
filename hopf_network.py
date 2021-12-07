@@ -29,7 +29,7 @@ class HopfNetwork():
                 mu=1**2,                # converge to sqrt(mu)
                 omega_swing=1*2*np.pi,  # MUST EDIT
                 omega_stance=1*2*np.pi, # MUST EDIT
-                gait="TROT",            # change depending on desired gait
+                gait="WALK",            # change depending on desired gait
                 coupling_strength=1,    # coefficient to multiply coupling matrix
                 couple=True,            # should couple
                 time_step=0.001,        # time step
@@ -87,14 +87,22 @@ class HopfNetwork():
     if gait == "TROT":
       print('TROT')
       self.PHI = self.PHI_trot
+      self._omega_swing = 2*np.pi*7
+      self._omega_stance = 3*np.pi*7
     elif gait == "PACE":
       print('PACE')
       self.PHI = self.PHI_pace
+      self._omega_swing = 2*np.pi*7
+      self._omega_stance = 3*np.pi*7
     elif gait == "BOUND":
       print('BOUND')
       self.PHI = self.PHI_bound
+      self._omega_swing = 2*np.pi*8
+      self._omega_stance = 3*np.pi*8
     elif gait == "WALK":
       print('WALK')
+      self._omega_swing = -2*np.pi*8
+      self._omega_stance = -3*np.pi*8
       self.PHI = self.PHI_walk
     else:
       raise ValueError( gait + 'not implemented.')
