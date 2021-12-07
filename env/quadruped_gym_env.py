@@ -69,7 +69,7 @@ class QuadrupedGymEnv(gym.Env):
       distance_weight=2,
       energy_weight=0.008,
       motor_control_mode="PD",
-      task_env="FWD_LOCOMOTION",
+      task_env="LR_COURSE_TASK",
       observation_space_mode="DEFAULT",
       on_rack=False,
       render=False,
@@ -124,6 +124,8 @@ class QuadrupedGymEnv(gym.Env):
     self._env_step_counter = 0
     self._sim_step_counter = 0
     self._last_base_position = [0, 0, 0]
+    self._last_motor_angle = np.zeros(12)
+    self._last_base_angular_velocity = np.zeros(3)
     self._last_frame_time = 0.0 # for rendering
     self._MAX_EP_LEN = EPISODE_LENGTH # max sim time in seconds, arbitrary
     self._action_bound = 1.0
@@ -157,8 +159,12 @@ class QuadrupedGymEnv(gym.Env):
       # Note 50 is arbitrary below, you may have more or less
       # On limite l'obervation à la limite physique + une tolérance epsilon. C'est un requirement
       # de l'environnement RL et ça limite le complexity de la policy.
-      observation_high = (np.zeros(50) + OBSERVATION_EPS)
-      observation_low = (np.zeros(50) -  OBSERVATION_EPS)
+      observation_high = (np.concatenate((self._robot_config.UPPER_ANGLE_JOINT,
+                                         self._robot_config.VELOCITY_LIMITS,
+                                         np.array([1.0]*4))) +  OBSERVATION_EPS)
+      observation_low = (np.concatenate((self._robot_config.LOWER_ANGLE_JOINT,
+                                         -self._robot_config.VELOCITY_LIMITS,
+                                         np.array([-1.0]*4))) -  OBSERVATION_EPS)
     else:
       raise ValueError("observation space not defined or not intended")
 
@@ -184,7 +190,9 @@ class QuadrupedGymEnv(gym.Env):
     elif self._observation_space_mode == "LR_COURSE_OBS":
       # [TODO] Get observation from robot. What are reasonable measurements we could get on hardware?
       # 50 is arbitrary
-      self._observation = np.zeros(50)
+       self._observation = np.concatenate((self.robot.GetMotorAngles(),
+                                          self.robot.GetMotorVelocities(),
+                                          self.robot.GetBaseOrientation() ))
 
     else:
       raise ValueError("observation space not defined or not intended")
@@ -239,7 +247,27 @@ class QuadrupedGymEnv(gym.Env):
 
   def _reward_lr_course(self):
     """ Implement your reward function here. How will you improve upon the above? """
-    # [TODO] add your reward function.
+    # [TODO] maximize x progress, minimize angular velocity of the body, minimize energy
+    current_base_position = self.robot.GetBasePosition()
+    current_motor_torque = self.robot.GetMotorTorques()
+    current_motor_angle = self.robot.GetMotorAngles()
+    current_base_angular_velocity = self.robot.GetBaseAngularVelocity()
+
+    forward_reward = self._distance_weight*(current_base_position[0] - self._last_base_position[0]) - self._energy_weight*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle)))- 0.004*(current_base_angular_velocity[1] - self._last_base_angular_velocity)
+    self._last_base_position = current_base_position
+    self._last_motor_angle = current_motor_angle
+    self._last_base_angular_velocity = current_base_angular_velocity[1]
+    # clip reward to MAX_FWD_VELOCITY (avoid exploiting simulator dynamics)
+    if MAX_FWD_VELOCITY < np.inf:
+      # calculate what max distance can be over last time interval based on max allowed fwd velocity
+      max_dist = MAX_FWD_VELOCITY * (self._time_step * self._action_repeat)
+      forward_reward = min( forward_reward, max_dist)
+
+    return forward_reward
+
+
+
+
     return 0
 
   def _reward(self):
