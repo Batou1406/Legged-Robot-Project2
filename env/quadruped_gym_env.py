@@ -253,7 +253,9 @@ class QuadrupedGymEnv(gym.Env):
     current_motor_angle = self.robot.GetMotorAngles()
     current_base_angular_velocity = self.robot.GetBaseAngularVelocity()
 
-    forward_reward = self._distance_weight*(current_base_position[0] - self._last_base_position[0]) - self._energy_weight*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle)))- 0.004*(current_base_angular_velocity[1] - self._last_base_angular_velocity)
+    forward_reward = self._distance_weight*(current_base_position[0] - self._last_base_position[0])
+    forward_reward -= self._energy_weight*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle)))
+    forward_reward -= 0.004*sum(current_base_angular_velocity - self._last_base_angular_velocity)
     self._last_base_position = current_base_position
     self._last_motor_angle = current_motor_angle
     self._last_base_angular_velocity = current_base_angular_velocity[1]
