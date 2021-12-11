@@ -66,11 +66,11 @@ class QuadrupedGymEnv(gym.Env):
       isRLGymInterface=True,
       time_step=0.001,
       action_repeat=10,
-      distance_weight=2,
+      distance_weight=10,
       energy_weight=0.008,
       motor_control_mode="PD",
-      task_env="LR_COURSE_TASK",
-      observation_space_mode="DEFAULT",
+      task_env="LR_COURSE_TASK", #FWD_LOCOMOTION LR_COURSE_TASK
+      observation_space_mode="LR_COURSE_OBS", #LR_COURSE_OBS DEFAULT
       on_rack=False,
       render=False,
       record_video=False,
@@ -161,10 +161,10 @@ class QuadrupedGymEnv(gym.Env):
       # de l'environnement RL et ça limite le complexity de la policy.
       observation_high = (np.concatenate((self._robot_config.UPPER_ANGLE_JOINT,
                                          self._robot_config.VELOCITY_LIMITS,
-                                         np.array([1.0]*4))) +  OBSERVATION_EPS)
+                                         np.array([1.0]*4), np.array([10.0]*3), np.array([10.0]*3))) +  OBSERVATION_EPS)
       observation_low = (np.concatenate((self._robot_config.LOWER_ANGLE_JOINT,
                                          -self._robot_config.VELOCITY_LIMITS,
-                                         np.array([-1.0]*4))) -  OBSERVATION_EPS)
+                                         np.array([-1.0]*4), np.array([-10.0]*3), np.array([-10.0]*3))) -  OBSERVATION_EPS)
     else:
       raise ValueError("observation space not defined or not intended")
 
@@ -192,7 +192,9 @@ class QuadrupedGymEnv(gym.Env):
       # 50 is arbitrary
        self._observation = np.concatenate((self.robot.GetMotorAngles(),
                                           self.robot.GetMotorVelocities(),
-                                          self.robot.GetBaseOrientation() ))
+                                          self.robot.GetBaseOrientation(),
+                                          self.robot.GetBaseLinearVelocity(),
+                                          self.robot.GetBaseAngularVelocity() ))
 
     else:
       raise ValueError("observation space not defined or not intended")
@@ -243,6 +245,7 @@ class QuadrupedGymEnv(gym.Env):
       max_dist = MAX_FWD_VELOCITY * (self._time_step * self._action_repeat)
       forward_reward = min( forward_reward, max_dist)
 
+    print("forward reward",forward_reward)
     return self._distance_weight * forward_reward
 
   def _reward_lr_course(self):
@@ -250,21 +253,44 @@ class QuadrupedGymEnv(gym.Env):
     # [TODO] maximize x progress, minimize angular velocity of the body, minimize energy
     current_base_position = self.robot.GetBasePosition()
     current_motor_torque = self.robot.GetMotorTorques()
+    current_motor_velocity = self.robot.GetMotorVelocities()
     current_motor_angle = self.robot.GetMotorAngles()
     current_base_angular_velocity = self.robot.GetBaseAngularVelocity()
+    current_base_velocity = self.robot.GetBaseLinearVelocity()
+    current_base_orientation = self.robot.GetBaseOrientationRollPitchYaw()
 
-    forward_reward = self._distance_weight*(current_base_position[0] - self._last_base_position[0])
-    forward_reward -= self._energy_weight*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle)))
-    forward_reward -= 0.004*sum(current_base_angular_velocity - self._last_base_angular_velocity)
+    forward_reward = 0
+    forward_reward += 50*(current_base_position[0] - self._last_base_position[0])
+    forward_reward += 2*(min(current_base_velocity[0],1))
+    forward_reward -= 0.04*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle)))
+    forward_reward -= 0.03*(current_base_angular_velocity[1]+current_base_angular_velocity[2])
+    forward_reward += 0.1*(2*abs((abs(current_base_orientation[2]) -np.pi)) -np.pi)
+    #forward_reward += 2*self.get_sim_time()
+    forward_reward -= 0.003*sum(abs(current_motor_velocity))
+
+#    print("Distance reward",500*(current_base_position[0] - self._last_base_position[0]))
+#    print("Motor velocity reward",0.001*sum(abs(current_motor_velocity)))
+#    print("Angular velocity reward",0.03*(current_base_angular_velocity[1]+current_base_angular_velocity[2]))
+#    print("Energy reward",0.08*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle))))
+
     self._last_base_position = current_base_position
     self._last_motor_angle = current_motor_angle
     self._last_base_angular_velocity = current_base_angular_velocity[1]
-    # clip reward to MAX_FWD_VELOCITY (avoid exploiting simulator dynamics)
-    if MAX_FWD_VELOCITY < np.inf:
-      # calculate what max distance can be over last time interval based on max allowed fwd velocity
-      max_dist = MAX_FWD_VELOCITY * (self._time_step * self._action_repeat)
-      forward_reward = min( forward_reward, max_dist)
 
+    #print("energy", self._energy_weight*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle))))
+    #print("current motor torque",current_motor_torque)
+    #print("delta motor angle",current_motor_angle-self._last_motor_angle)
+    #print("orientation",current_base_orientation[2])
+    #print("roll yaw",0.1*(current_base_angular_velocity[1]+current_base_angular_velocity[2]))
+    #forward_reward=[1,2,3] #pour faire buger et afficher les prints q'une fois.
+
+    # clip reward to MAX_FWD_VELOCITY (avoid exploiting simulator dynamics)
+    #if MAX_FWD_VELOCITY < np.inf:
+      # calculate what max distance can be over last time interval based on max allowed fwd velocity
+      #max_dist = MAX_FWD_VELOCITY * (self._time_step * self._action_repeat)
+      #forward_reward = min( forward_reward, max_dist)
+
+    #print("forward reward",forward_reward)
     return forward_reward
 
 
