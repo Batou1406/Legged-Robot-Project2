@@ -160,11 +160,17 @@ class QuadrupedGymEnv(gym.Env):
       # On limite l'obervation à la limite physique + une tolérance epsilon. C'est un requirement
       # de l'environnement RL et ça limite le complexity de la policy.
       observation_high = (np.concatenate((self._robot_config.UPPER_ANGLE_JOINT,
-                                         self._robot_config.VELOCITY_LIMITS,
-                                         np.array([1.0]*4), np.array([10.0]*3), np.array([10.0]*3))) +  OBSERVATION_EPS)
+                                          self._robot_config.VELOCITY_LIMITS,
+                                          np.array([1.0]*4),
+                                          np.array([10.0]*3),
+                                          np.array([10.0]*3)))
+                                          +  OBSERVATION_EPS)
       observation_low = (np.concatenate((self._robot_config.LOWER_ANGLE_JOINT,
                                          -self._robot_config.VELOCITY_LIMITS,
-                                         np.array([-1.0]*4), np.array([-10.0]*3), np.array([-10.0]*3))) -  OBSERVATION_EPS)
+                                         np.array([-1.0]*4),    #base orientation
+                                         np.array([-10.0]*3),   #base linear velocity
+                                         np.array([-10.0]*3)))  #base angular velocity
+                                         -  OBSERVATION_EPS)
     else:
       raise ValueError("observation space not defined or not intended")
 
@@ -191,10 +197,10 @@ class QuadrupedGymEnv(gym.Env):
       # [TODO] Get observation from robot. What are reasonable measurements we could get on hardware?
       # 50 is arbitrary
        self._observation = np.concatenate((self.robot.GetMotorAngles(),
-                                          self.robot.GetMotorVelocities(),
-                                          self.robot.GetBaseOrientation(),
-                                          self.robot.GetBaseLinearVelocity(),
-                                          self.robot.GetBaseAngularVelocity() ))
+                                           self.robot.GetMotorVelocities(),
+                                           self.robot.GetBaseOrientation(),
+                                           self.robot.GetBaseLinearVelocity(),
+                                           self.robot.GetBaseAngularVelocity() ))
 
     else:
       raise ValueError("observation space not defined or not intended")
@@ -261,10 +267,10 @@ class QuadrupedGymEnv(gym.Env):
 
     forward_reward = 0
     forward_reward += 50*(current_base_position[0] - self._last_base_position[0])
-    forward_reward += 2*(min(current_base_velocity[0],1))
-    forward_reward -= 0.04*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle)))
-    forward_reward -= 0.03*(current_base_angular_velocity[1]+current_base_angular_velocity[2])
-    forward_reward += 0.1*(2*abs((abs(current_base_orientation[2]) -np.pi)) -np.pi)
+    #forward_reward += 2*(min(current_base_velocity[0],1))
+    forward_reward -= 0.04*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle))) #divide by time step
+    forward_reward -= 0.03*(current_base_angular_velocity[1]**2+current_base_angular_velocity[2]**2)
+    #forward_reward += 0.1*(2*abs((abs(current_base_orientation[2]) -np.pi)) -np.pi)
     #forward_reward += 2*self.get_sim_time()
     forward_reward -= 0.003*sum(abs(current_motor_velocity))
 
