@@ -29,7 +29,7 @@ class HopfNetwork():
                 mu=1**2,                # converge to sqrt(mu)
                 omega_swing=1*2*np.pi,  # MUST EDIT
                 omega_stance=1*2*np.pi, # MUST EDIT
-                gait="WALK",            # change depending on desired gait
+                gait="TROT",            # change depending on desired gait
                 coupling_strength=1,    # coefficient to multiply coupling matrix
                 couple=True,            # should couple
                 time_step=0.001,        # time step
@@ -87,8 +87,8 @@ class HopfNetwork():
     if gait == "TROT":
       print('TROT')
       self.PHI = self.PHI_trot
-      self._omega_swing = 2*np.pi*7
-      self._omega_stance = 3*np.pi*7
+      self._omega_swing = 2*np.pi*6
+      self._omega_stance = 3*np.pi*6
     elif gait == "PACE":
       print('PACE')
       self.PHI = self.PHI_pace
@@ -97,12 +97,12 @@ class HopfNetwork():
     elif gait == "BOUND":
       print('BOUND')
       self.PHI = self.PHI_bound
-      self._omega_swing = 2*np.pi*8
-      self._omega_stance = 3*np.pi*8
+      self._omega_swing = 2*np.pi*11
+      self._omega_stance = 3*np.pi*11
     elif gait == "WALK":
       print('WALK')
-      self._omega_swing = -2*np.pi*8
-      self._omega_stance = -3*np.pi*8
+      self._omega_swing = 2*np.pi*8
+      self._omega_stance = 3*np.pi*8
       self.PHI = self.PHI_walk
     else:
       raise ValueError( gait + 'not implemented.')
@@ -171,7 +171,7 @@ if __name__ == "__main__":
   foot_y = 0.0838 # this is the hip length
   sideSign = np.array([-1, 1, -1, 1]) # get correct hip sign (body right is negative)
 
-  env = QuadrupedGymEnv(render=True,              # visualize
+  env = QuadrupedGymEnv(render=False,              # visualize
                       on_rack=False,              # useful for debugging!
                       isRLGymInterface=False,     # not using RL
                       time_step=TIME_STEP,
@@ -190,6 +190,47 @@ if __name__ == "__main__":
   # [TODO] initialize data structures to save CPG and robot states
   amp_deph=np.zeros((2,4,TEST_STEPS))
   robot_states=np.zeros((12,TEST_STEPS))
+  f_pos_x_fr = list("")
+  f_pos_z_fr =  list("")
+  f_pos_x_fl = list("")
+  f_pos_z_fl =  list("")
+  f_pos_x_rr = list("")
+  f_pos_z_rr =  list("")
+  f_pos_x_rl = list("")
+  f_pos_z_rl =  list("")
+  f_pos_z_compa = list("")
+  velocity = list("")
+  
+  q_tot_zero = list("")
+  q_tot_one = list("")
+  q_tot_two = list("")
+  qdes_tot_zero = list("")
+  qdes_tot_one = list("")
+  qdes_tot_two = list("")
+  dq_tot = list("")
+  desired_q = list("")
+  desired_dq = list("")
+  tautau = list("")
+  tautau1 = list("")
+  tautau2 = list("")
+  tautau3 = list("")
+  tau_der = list("")
+  
+  pos_x= list("")
+  pos_y = list("")
+  pos_z = list("")
+  leg_x = list("")
+  leg_y = list("")
+  leg_z = list("")
+  leg_x1 = list("")
+  leg_y1 = list("")
+  leg_z1 = list("")
+  pos_z_2 = list("")
+  
+  speed = list("")
+  desired_speed = list("")
+  
+  contacts = list("")
 
 
   ############## Sample Gains
@@ -197,8 +238,9 @@ if __name__ == "__main__":
   kp=np.array([150,70,70])
   kd=np.array([2,0.5,0.5])
   # Cartesian PD gains
-  kpCartesian = np.diag([2500]*3)
-  kdCartesian = np.diag([40]*3)
+  kpCartesian = np.diag([3000]*3)
+  kdCartesian = np.diag([80]*3)
+  print(kpCartesian)
 
 
   for j in range(TEST_STEPS):
@@ -209,6 +251,17 @@ if __name__ == "__main__":
     # [TODO] get current motor angles and velocities for joint PD, see GetMotorAngles(), GetMotorVelocities() in quadruped.py
     q=env.robot.GetMotorAngles()
     dq=env.robot.GetMotorVelocities()
+    vel = env.robot.GetBaseLinearVelocity()
+   
+    f_pos_x_fr.append(xs[0])
+    f_pos_z_fr.append(zs[0])
+    f_pos_x_fl.append(xs[1])
+    f_pos_z_fl.append(zs[1])
+    f_pos_x_rr.append(xs[2])
+    f_pos_z_rr.append(zs[2])
+    f_pos_x_rl.append(xs[3])
+    f_pos_z_rl.append(zs[3])
+    f_pos_z_compa.append(zs[2])
 
     # loop through desired foot positions and calculate torques
     for i in range(4):
@@ -231,9 +284,24 @@ if __name__ == "__main__":
         v=J@dq[3*i:3*(i+1)] #mult bizarre parce que c'est pas que des numpy
         # Calculate torque contribution from Cartesian PD (Equation 5) [Make sure you are using matrix multiplications]
         tau+=np.transpose(J)@(kpCartesian@(leg_xyz-pos) + kdCartesian@(np.zeros(3)-v)) # [TODO]
+
+        if i ==0:
+            pos_x.append(pos[0])
+            pos_y.append(pos[1])
+            pos_z.append(pos[2])
+            leg_x.append(leg_xyz[0])
+            leg_y.append(leg_xyz[1])
+            leg_z.append(leg_xyz[2])
+            qdes_tot_zero.append(leq_q[0])
+            q_tot_zero.append(q[0])
+            qdes_tot_one.append(leq_q[1])
+            q_tot_one.append(q[1]) 
+            qdes_tot_two.append(leq_q[2])
+            q_tot_two.append(q[2]) 
+
       # Set tau for legi in action vector
       action[3*i:3*i+3] = tau
-
+      velocity.append(vel[0])
     # send torques to robot and simulate TIME_STEP seconds
     env.step(action)
 
@@ -247,7 +315,42 @@ if __name__ == "__main__":
   # PLOTS
   #####################################################
   # example
-  # fig = plt.figure()
-  # plt.plot(t,joint_pos[1,:], label='FR thigh')
-  # plt.legend()
-  # plt.show()
+  fig1 =  plt.figure()
+  plt.plot(t[0:10000],velocity[0:10000], label='x velocity')
+  #plt.plot(t[0:1000],q_tot_zero[0:1000], label='joint angle leg 0')
+  #plt.plot(t[0:1000],f_pos_x_rr[0:1000],'r', label = 'x leg2')
+  #plt.plot(t[0:1000],f_pos_x_fl[0:1000], 'g',label='x leg 1')
+  #plt.plot(t[0:1000],f_pos_x_rl[0:1000],'y', label = 'x leg 3')
+  plt.legend()
+  
+  #fig2 = plt.figure()
+  #plt.plot(t[0:1000],pos_z[0:1000], label='z leg 0')
+  #plt.plot(t[0:1000],leg_z[0:1000], label='desired z leg 0')
+  ##plt.plot(t[0:1000],f_pos_z_fl[0:1000], 'g',label='z leg 1')
+  ##plt.plot(t[0:1000],f_pos_z_rl[0:1000],'y', label = 'z leg 3')
+  #plt.legend()
+  
+  #fig3 = plt.figure()
+  #plt.plot(t[0:1000],pos_y[0:1000], label='y leg 0')
+  #plt.plot(t[0:1000],leg_y[0:1000], label='desired y leg 0')
+  #plt.legend()
+  ## plt.show()
+  lim=1000
+  fig, axs = plt.subplots(1, 3)
+  fig.suptitle('Actual vs desired joints front right foot position without cartesian pd')
+
+  axs[0].set_title('hip joint')
+ 
+  axs[0].plot(t[0:lim],qdes_tot_zero[0:1000][0:lim])
+  axs[0].plot(t[0:1000],q_tot_zero[0:lim])
+  
+
+  axs[1].set_title('thigh joint')
+  axs[1].plot(t[0:lim],qdes_tot_one[0:1000][0:lim])
+  axs[1].plot(t[0:1000],q_tot_one[0:lim])
+
+  axs[2].set_title('calf joint')
+  axs[2].plot(t[0:lim],qdes_tot_two[0:1000][0:lim])
+  axs[2].plot(t[0:1000],q_tot_two[0:lim])
+
+  plt.show()
