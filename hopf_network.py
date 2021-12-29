@@ -29,7 +29,7 @@ class HopfNetwork():
                 mu=1**2,                # converge to sqrt(mu)
                 omega_swing=1*2*np.pi,  # MUST EDIT
                 omega_stance=1*2*np.pi, # MUST EDIT
-                gait="WALK",            # change depending on desired gait
+                gait="TROT",            # change depending on desired gait
                 coupling_strength=1,    # coefficient to multiply coupling matrix
                 couple=True,            # should couple
                 time_step=0.001,        # time step
@@ -101,8 +101,8 @@ class HopfNetwork():
       self._omega_stance = 3*np.pi*8
     elif gait == "WALK":
       print('WALK')
-      self._omega_swing = -2*np.pi*8
-      self._omega_stance = -3*np.pi*8
+      self._omega_swing = 2*np.pi*8
+      self._omega_stance = 3*np.pi*8
       self.PHI = self.PHI_walk
     else:
       raise ValueError( gait + 'not implemented.')
@@ -171,14 +171,14 @@ if __name__ == "__main__":
   foot_y = 0.0838 # this is the hip length
   sideSign = np.array([-1, 1, -1, 1]) # get correct hip sign (body right is negative)
 
-  env = QuadrupedGymEnv(render=True,              # visualize
+  env = QuadrupedGymEnv(render=False,              # visualize
                       on_rack=False,              # useful for debugging!
                       isRLGymInterface=False,     # not using RL
                       time_step=TIME_STEP,
                       action_repeat=1,
                       motor_control_mode="TORQUE",
                       add_noise=False,    # start in ideal conditions
-                      # record_video=True
+                      #record_video=True
                       )
 
   # initialize Hopf Network, supply gait
@@ -189,6 +189,7 @@ if __name__ == "__main__":
 
   # [TODO] initialize data structures to save CPG and robot states
   amp_deph=np.zeros((2,4,TEST_STEPS))
+  amp_deph_deriv=np.zeros((2,4,TEST_STEPS))
   robot_states=np.zeros((12,TEST_STEPS))
 
 
@@ -200,6 +201,7 @@ if __name__ == "__main__":
   kpCartesian = np.diag([2500]*3)
   kdCartesian = np.diag([40]*3)
 
+  previous_amp_deph=0
 
   for j in range(TEST_STEPS):
     # initialize torque array to send to motors
@@ -240,14 +242,104 @@ if __name__ == "__main__":
     # [TODO] save any CPG or robot states
     amp_deph[:,:,j]=cpg.X
     robot_states[:,j]=q
+    amp_deph_deriv[:,:,j]=(cpg.X-previous_amp_deph)/TIME_STEP
+    previous_amp_deph=cpg.X.copy()
+
+  lim=1000
+  #fig, axs = plt.subplots(2, 2)
+  #fig.suptitle('Front right Leg')
+  #axs[0, 1].plot(t[1:lim],amp_deph[1,3,1:lim])
+  #axs[0, 1].set_title('dephasage')
+
+  #axs[0, 0].plot(t[1:lim],amp_deph[0,3,1:lim])
+  #axs[0, 0].set_title('amplitude')
+
+  #axs[1, 1].plot(t[1:lim],amp_deph_deriv[1,3,1:lim])
+  #axs[1, 1].set_title('dephasage derivative')
+  #axs[1,1,].set_ylim([40,85])
+
+  #axs[1, 0].plot(t[1:lim],amp_deph_deriv[0,3,1:lim])
+  #axs[1, 0].set_title('amplitude derivative')
 
 
 
+
+
+  fig2, axs = plt.subplots(2, 2)
+  #fig2.suptitle('Amplitude')
+  axs[0, 1].plot(t[1:lim],amp_deph[0,0,1:lim])
+  axs[0, 1].set_title('front right')
+
+  axs[0, 0].plot(t[1:lim],amp_deph[0,1,1:lim])
+  axs[0, 0].set_title('front left')
+
+  axs[1, 1].plot(t[1:lim],amp_deph[0,2,1:lim])
+  axs[1, 1].set_title('back right')
+
+  axs[1, 0].plot(t[1:lim],amp_deph[0,3,1:lim])
+  axs[1, 0].set_title('back left')
+  for ax in axs.flat:
+    ax.label_outer()
+
+  fig3, axs = plt.subplots(2, 2)
+  #fig2.suptitle('dephasage')
+  axs[0, 1].plot(t[1:lim],amp_deph[1,0,1:lim])
+  axs[0, 1].set_title('front right')
+
+  axs[0, 0].plot(t[1:lim],amp_deph[1,1,1:lim])
+  axs[0, 0].set_title('front left')
+
+  axs[1, 1].plot(t[1:lim],amp_deph[1,2,1:lim])
+  axs[1, 1].set_title('back right')
+
+  axs[1, 0].plot(t[1:lim],amp_deph[1,3,1:lim])
+  axs[1, 0].set_title('back left')
+  for ax in axs.flat:
+    ax.label_outer()
+
+
+  fig4, axs = plt.subplots(2, 2)
+  #fig2.suptitle('amplitude derivative')
+  axs[0, 1].plot(t[1:lim],amp_deph_deriv[0,0,1:lim])
+  axs[0, 1].set_title('front right')
+
+  axs[0, 0].plot(t[1:lim],amp_deph_deriv[0,1,1:lim])
+  axs[0, 0].set_title('front left')
+
+  axs[1, 1].plot(t[1:lim],amp_deph_deriv[0,2,1:lim])
+  axs[1, 1].set_title('back right')
+
+  axs[1, 0].plot(t[1:lim],amp_deph_deriv[0,3,1:lim])
+  axs[1, 0].set_title('back left')
+  for ax in axs.flat:
+    ax.label_outer()
+
+  fig5, axs = plt.subplots(2, 2)
+  #fig2.suptitle('dephasage derivative')
+  axs[0, 1].plot(t[1:lim],amp_deph_deriv[1,0,1:lim])
+  axs[0, 1].set_title('front right')
+  axs[0, 1].set_ylim([40,80])
+
+  axs[0, 0].plot(t[1:lim],amp_deph_deriv[1,1,1:lim])
+  axs[0, 0].set_title('front left')
+  axs[0, 0].set_ylim([40,80])
+
+  axs[1, 1].plot(t[1:lim],amp_deph_deriv[1,2,1:lim])
+  axs[1, 1].set_title('back right')
+  axs[1, 1].set_ylim([40,80])
+
+  axs[1, 0].plot(t[1:lim],amp_deph_deriv[1,3,1:lim])
+  axs[1, 0].set_title('back left')
+  axs[1, 0].set_ylim([40,80])
+  for ax in axs.flat:
+    ax.label_outer()
+
+  plt.show()
   #####################################################
   # PLOTS
   #####################################################
   # example
-  # fig = plt.figure()
-  # plt.plot(t,joint_pos[1,:], label='FR thigh')
-  # plt.legend()
-  # plt.show()
+  #fig = plt.figure(1)
+  #plt.plot(t,joint_pos[1,:], label='FR thigh')
+  #plt.legend()
+  #plt.show()

@@ -68,7 +68,10 @@ class QuadrupedGymEnv(gym.Env):
       action_repeat=10,
       distance_weight=10,
       energy_weight=0.008,
-      motor_control_mode="PD",
+      theta=0,
+      theta2=0,
+      desired_speed=3.5,
+      motor_control_mode="CARTESIAN_PD", #["PD","TORQUE", "CARTESIAN_PD"]:
       task_env="LR_COURSE_TASK", #FWD_LOCOMOTION LR_COURSE_TASK
       observation_space_mode="LR_COURSE_OBS", #LR_COURSE_OBS DEFAULT
       on_rack=False,
@@ -104,6 +107,9 @@ class QuadrupedGymEnv(gym.Env):
     self._action_repeat = action_repeat
     self._distance_weight = distance_weight
     self._energy_weight = energy_weight
+    self.theta = theta
+    self.theta2 = theta2
+    self.desired_speed = desired_speed
     self._motor_control_mode = motor_control_mode
     self._TASK_ENV = task_env
     self._observation_space_mode = observation_space_mode
@@ -129,6 +135,14 @@ class QuadrupedGymEnv(gym.Env):
     self._last_frame_time = 0.0 # for rendering
     self._MAX_EP_LEN = EPISODE_LENGTH # max sim time in seconds, arbitrary
     self._action_bound = 1.0
+
+    self.testVar1=0
+    self.testVar2=0
+    self.testVar3=0
+    self.testVar4=0
+    self.testVar5=0
+    self.testVar6=0
+    self.testVar7=0
 
     self.setupActionSpace()
     self.setupObservationSpace()
@@ -161,15 +175,19 @@ class QuadrupedGymEnv(gym.Env):
       # de l'environnement RL et ça limite le complexity de la policy.
       observation_high = (np.concatenate((self._robot_config.UPPER_ANGLE_JOINT,
                                           self._robot_config.VELOCITY_LIMITS,
+                                          np.array([1000]*12),
                                           np.array([1.0]*4),
                                           np.array([10.0]*3),
-                                          np.array([10.0]*3)))
+                                          np.array([10.0]*3),
+                                          np.array([1000]*4)))
                                           +  OBSERVATION_EPS)
       observation_low = (np.concatenate((self._robot_config.LOWER_ANGLE_JOINT,
                                          -self._robot_config.VELOCITY_LIMITS,
+                                         np.array([-1000]*12),  #motor torqes
                                          np.array([-1.0]*4),    #base orientation
                                          np.array([-10.0]*3),   #base linear velocity
-                                         np.array([-10.0]*3)))  #base angular velocity
+                                         np.array([-10.0]*3),   #base angular velocity
+                                         np.array([-0.1]*4)))   #foot normal forces
                                          -  OBSERVATION_EPS)
     else:
       raise ValueError("observation space not defined or not intended")
@@ -198,9 +216,11 @@ class QuadrupedGymEnv(gym.Env):
       # 50 is arbitrary
        self._observation = np.concatenate((self.robot.GetMotorAngles(),
                                            self.robot.GetMotorVelocities(),
+                                           self.robot.GetMotorTorques(),
                                            self.robot.GetBaseOrientation(),
                                            self.robot.GetBaseLinearVelocity(),
-                                           self.robot.GetBaseAngularVelocity() ))
+                                           self.robot.GetBaseAngularVelocity(),
+                                           self.robot.GetContactInfo()[2] ))
 
     else:
       raise ValueError("observation space not defined or not intended")
@@ -263,40 +283,55 @@ class QuadrupedGymEnv(gym.Env):
     current_motor_angle = self.robot.GetMotorAngles()
     current_base_angular_velocity = self.robot.GetBaseAngularVelocity()
     current_base_velocity = self.robot.GetBaseLinearVelocity()
-    current_base_orientation = self.robot.GetBaseOrientationRollPitchYaw()
+    current_base_orientation = self.robot.GetBaseOrientation()
+    current_base_yaw = self.robot.GetBaseOrientationRollPitchYaw()[2]
+    current_feet_in_contact = self.robot.GetContactInfo()[3]
+    current_feet_height = np.zeros(4)
+    counter = 0
+    for i in range(4):
+        J, pos = self.robot.ComputeJacobianAndPosition(i)
+        current_feet_height[i] = pos[2]
+
 
     forward_reward = 0
-    forward_reward += 50*(current_base_position[0] - self._last_base_position[0])
-    #forward_reward += 2*(min(current_base_velocity[0],1))
-    forward_reward -= 0.04*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle))) #divide by time step
-    forward_reward -= 0.03*(current_base_angular_velocity[1]**2+current_base_angular_velocity[2]**2)
-    #forward_reward += 0.1*(2*abs((abs(current_base_orientation[2]) -np.pi)) -np.pi)
-    #forward_reward += 2*self.get_sim_time()
-    forward_reward -= 0.003*sum(abs(current_motor_velocity))
+    forward_reward += 8*(((current_base_position[0]-self._last_base_position[0])**2+(current_base_position[1]-self._last_base_position[1])**2)**(1/2))*np.cos(abs(current_base_yaw-self.theta2) + abs(np.arctan2(current_base_position[1],current_base_position[0])-self.theta))  #  max 200 ,dist ~+40 pour 10'000 time step (sans weight) (~0.05 de reard à chaque step)
+    if((current_base_velocity[0]**2+current_base_velocity[1]**2)**(1/2) > self.desired_speed):
+        forward_reward -=  0.02*((current_base_velocity[0]**2+current_base_velocity[1]**2)**(1/2) - self.desired_speed)*self._action_repeat #afine func with max at desired velocity.
+    #self.testVar1+=forward_reward
+    forward_reward += min(0.07*(0.7 - sum(abs(np.array(current_base_orientation) - np.array(self._robot_config.INIT_ORIENTATION)))),0)
+    forward_reward += min(3*(0.04 - abs(current_base_position[2] - 0.305)),0) # +90 si parfait pour les 1'000 update
+    forward_reward -= 0.03*current_base_position[1]**2 #so the robot goes straight
+    forward_reward -= 0.025*(np.dot(abs(current_motor_torque),abs(current_motor_angle-self._last_motor_angle)))
+    #for i in range(4):
+    #    if(current_feet_height[i] > 0.1 and counter < 2):
+    #        counter += 1 #do not reward if more than two feet are in the air.
+    #        forward_reward += 0.1 #max 200 if perfect.
+    if(sum(current_feet_in_contact) == 2):
+        forward_reward += max(1*sum(current_feet_height),0.3)
+    forward_reward = max(0,forward_reward)
 
-#    print("Distance reward",500*(current_base_position[0] - self._last_base_position[0]))
-#    print("Motor velocity reward",0.001*sum(abs(current_motor_velocity)))
-#    print("Angular velocity reward",0.03*(current_base_angular_velocity[1]+current_base_angular_velocity[2]))
-#    print("Energy reward",0.08*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle))))
+    #self.testVar2+=1*(0.03 - abs(current_base_position[2] - 0.305))
+    #self.testVar3+=10*((current_base_position[0] - self._last_base_position[0])*(np.cos(self.theta)**2) + (current_base_position[1] - self._last_base_position[1])*(np.sin(self.theta)**2))
+    #self.testVar4+=forward_reward
+    #self.testVar5+=0.03*current_base_position[1]**2
+    #self.testVar6+=0.05*(0.3 - sum(abs(np.array(current_base_orientation) - np.array(self._robot_config.INIT_ORIENTATION))))
+    #self.testVar7+=0.025*(np.dot(abs(current_motor_torque),abs(current_motor_angle-self._last_motor_angle)))
+    #print("position :",current_base_position)
+    #print("Velocity :",current_base_velocity)
+    #print("Orientation",sum(abs(np.array(current_base_orientation) - np.array(self._robot_config.INIT_ORIENTATION))))
+    #print("forward reward :",self.testVar1)
+    #print("New forward reward",self.testVar3)
+    #print("Height reard :",self.testVar2)
+    #print("Orientation reward",self.testVar6)
+    #print("deviation reward :",self.testVar5)
+    #print("Energy reward :", self.testVar7)
+    #print("Total reward :",self.testVar4)
+    #print(" ")
 
     self._last_base_position = current_base_position
     self._last_motor_angle = current_motor_angle
     self._last_base_angular_velocity = current_base_angular_velocity[1]
 
-    #print("energy", self._energy_weight*(np.dot(current_motor_torque,abs(current_motor_angle-self._last_motor_angle))))
-    #print("current motor torque",current_motor_torque)
-    #print("delta motor angle",current_motor_angle-self._last_motor_angle)
-    #print("orientation",current_base_orientation[2])
-    #print("roll yaw",0.1*(current_base_angular_velocity[1]+current_base_angular_velocity[2]))
-    #forward_reward=[1,2,3] #pour faire buger et afficher les prints q'une fois.
-
-    # clip reward to MAX_FWD_VELOCITY (avoid exploiting simulator dynamics)
-    #if MAX_FWD_VELOCITY < np.inf:
-      # calculate what max distance can be over last time interval based on max allowed fwd velocity
-      #max_dist = MAX_FWD_VELOCITY * (self._time_step * self._action_repeat)
-      #forward_reward = min( forward_reward, max_dist)
-
-    #print("forward reward",forward_reward)
     return forward_reward
 
 
@@ -365,7 +400,7 @@ class QuadrupedGymEnv(gym.Env):
       vd = np.zeros(3)
 
       # foot velocity in leg frame i (Equation 2)
-      v = J*qd # [TODO]
+      v = J@qd[3*i:3*(i+1)] # [TODO]
       # calculate torques with Cartesian PD (Equation 5) [Make sure you are using matrix multiplications]
       tau =  np.transpose(J)@(kpCartesian@(Pd-pos) + kdCartesian@(vd-v))# [TODO]
 
