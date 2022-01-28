@@ -171,14 +171,14 @@ if __name__ == "__main__":
   foot_y = 0.0838 # this is the hip length
   sideSign = np.array([-1, 1, -1, 1]) # get correct hip sign (body right is negative)
 
-  env = QuadrupedGymEnv(render=False,              # visualize
+  env = QuadrupedGymEnv(render=True,              # visualize
                       on_rack=False,              # useful for debugging!
                       isRLGymInterface=False,     # not using RL
                       time_step=TIME_STEP,
                       action_repeat=1,
                       motor_control_mode="TORQUE",
                       add_noise=False,    # start in ideal conditions
-                      #record_video=True
+                      record_video=True
                       )
 
   # initialize Hopf Network, supply gait
@@ -202,6 +202,12 @@ if __name__ == "__main__":
   kdCartesian = np.diag([40]*3)
 
   previous_amp_deph=0
+
+  power = 0
+  abspower = 0
+  zeropower = 0
+  lastVelocity = 0
+  duty_cycle = 0
 
   for j in range(TEST_STEPS):
     # initialize torque array to send to motors
@@ -245,6 +251,20 @@ if __name__ == "__main__":
     amp_deph_deriv[:,:,j]=(cpg.X-previous_amp_deph)/TIME_STEP
     previous_amp_deph=cpg.X.copy()
 
+
+    # CoT Computation
+    if(j > 7000 and j < 9000):
+        duty_cycle += env.robot.GetContactInfo()[3][0]*0.0005
+        lastVelocity += env.robot.GetBaseLinearVelocity()[0]*0.001
+        instantaneous_motor_power = (env.robot.GetMotorTorques()*env.robot.GetMotorVelocities())*0.001
+        power += sum(instantaneous_motor_power)
+        abspower += sum(abs(instantaneous_motor_power))
+        for n in range(len(instantaneous_motor_power)):
+            if(instantaneous_motor_power[n] > 0):
+                zeropower += instantaneous_motor_power[n]
+
+
+
   lim=1000
   #fig, axs = plt.subplots(2, 2)
   #fig.suptitle('Front right Leg')
@@ -263,6 +283,17 @@ if __name__ == "__main__":
 
 
 
+  #m = sum(env.robot.GetTotalMassFromURDF())
+  #g = 9.81
+  #print("mass",m)
+  #print("velocity",lastVelocity)
+  #print("Power",power)
+  #print("Absolut power", abspower)
+  #print("zero power", zeropower)
+  #print("Power CoT",power/(m*g*lastVelocity))
+  #print("Absolut power CoT", abspower/(m*g*lastVelocity))
+  #print("zero power CoT", zeropower/(m*g*lastVelocity))
+  print("Duty Cycle :", duty_cycle)
 
 
   fig2, axs = plt.subplots(2, 2)
@@ -318,19 +349,19 @@ if __name__ == "__main__":
   #fig2.suptitle('dephasage derivative')
   axs[0, 1].plot(t[1:lim],amp_deph_deriv[1,0,1:lim])
   axs[0, 1].set_title('front right')
-  axs[0, 1].set_ylim([40,80])
+  axs[0, 1].set_ylim([45,80])
 
   axs[0, 0].plot(t[1:lim],amp_deph_deriv[1,1,1:lim])
   axs[0, 0].set_title('front left')
-  axs[0, 0].set_ylim([40,80])
+  axs[0, 0].set_ylim([45,80])
 
   axs[1, 1].plot(t[1:lim],amp_deph_deriv[1,2,1:lim])
   axs[1, 1].set_title('back right')
-  axs[1, 1].set_ylim([40,80])
+  axs[1, 1].set_ylim([45,80])
 
   axs[1, 0].plot(t[1:lim],amp_deph_deriv[1,3,1:lim])
   axs[1, 0].set_title('back left')
-  axs[1, 0].set_ylim([40,80])
+  axs[1, 0].set_ylim([45,80])
   for ax in axs.flat:
     ax.label_outer()
 

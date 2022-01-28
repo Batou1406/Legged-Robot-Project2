@@ -70,13 +70,13 @@ class QuadrupedGymEnv(gym.Env):
       energy_weight=0.008,
       theta=0,
       theta2=0,
-      desired_speed=3.5,
+      desired_speed=2,
       motor_control_mode="CARTESIAN_PD", #["PD","TORQUE", "CARTESIAN_PD"]:
       task_env="LR_COURSE_TASK", #FWD_LOCOMOTION LR_COURSE_TASK
       observation_space_mode="LR_COURSE_OBS", #LR_COURSE_OBS DEFAULT
       on_rack=False,
       render=False,
-      record_video=False,
+      record_video=True,
       add_noise=True,
       test_env=False, # NOT ALLOWED FOR TRAINING!
       **kwargs): # any extra arguments from legacy
@@ -294,21 +294,24 @@ class QuadrupedGymEnv(gym.Env):
 
 
     forward_reward = 0
-    forward_reward += 8*(((current_base_position[0]-self._last_base_position[0])**2+(current_base_position[1]-self._last_base_position[1])**2)**(1/2))*np.cos(abs(current_base_yaw-self.theta2) + abs(np.arctan2(current_base_position[1],current_base_position[0])-self.theta))  #  max 200 ,dist ~+40 pour 10'000 time step (sans weight) (~0.05 de reard à chaque step)
+    forward_reward += 11*(((current_base_position[0]-self._last_base_position[0])**2+(current_base_position[1]-self._last_base_position[1])**2)**(1/2))*np.cos(abs(current_base_yaw-self.theta2) + abs(np.arctan2(current_base_position[1],current_base_position[0])-self.theta))  #  max 200 ,dist ~+40 pour 10'000 time step (sans weight) (~0.05 de reard à chaque step)
     if((current_base_velocity[0]**2+current_base_velocity[1]**2)**(1/2) > self.desired_speed):
         forward_reward -=  0.02*((current_base_velocity[0]**2+current_base_velocity[1]**2)**(1/2) - self.desired_speed)*self._action_repeat #afine func with max at desired velocity.
     #self.testVar1+=forward_reward
-    forward_reward += min(0.07*(0.7 - sum(abs(np.array(current_base_orientation) - np.array(self._robot_config.INIT_ORIENTATION)))),0)
-    forward_reward += min(3*(0.04 - abs(current_base_position[2] - 0.305)),0) # +90 si parfait pour les 1'000 update
-    forward_reward -= 0.03*current_base_position[1]**2 #so the robot goes straight
-    forward_reward -= 0.025*(np.dot(abs(current_motor_torque),abs(current_motor_angle-self._last_motor_angle)))
+    forward_reward += min(0.08*(0.5 - sum(abs(np.array(current_base_orientation) - np.array(self._robot_config.INIT_ORIENTATION)))),0)
+    forward_reward += min(3.3*(0.025 - abs(current_base_position[2] - 0.31)),0) # +90 si parfait pour les 1'000 update
+    forward_reward -= 0.06*current_base_position[1]**2 #so the robot goes straight
+    forward_reward -= 0.03*(np.dot(abs(current_motor_torque),abs(current_motor_angle-self._last_motor_angle)))
     #for i in range(4):
     #    if(current_feet_height[i] > 0.1 and counter < 2):
     #        counter += 1 #do not reward if more than two feet are in the air.
     #        forward_reward += 0.1 #max 200 if perfect.
     if(sum(current_feet_in_contact) == 2):
-        forward_reward += max(1*sum(current_feet_height),0.3)
+        forward_reward += 0.9*max(1*sum(current_feet_height),0.2)
     forward_reward = max(0,forward_reward)
+
+
+    self.testVar6 += (current_base_velocity[0]**2+current_base_velocity[1]**2)**(1/2)
 
     #self.testVar2+=1*(0.03 - abs(current_base_position[2] - 0.305))
     #self.testVar3+=10*((current_base_position[0] - self._last_base_position[0])*(np.cos(self.theta)**2) + (current_base_position[1] - self._last_base_position[1])*(np.sin(self.theta)**2))
@@ -327,6 +330,41 @@ class QuadrupedGymEnv(gym.Env):
     #print("Energy reward :", self.testVar7)
     #print("Total reward :",self.testVar4)
     #print(" ")
+
+    m = 12.45
+    g = 9.81
+
+    power = 0
+    abspower = 0
+    zeropower = 0
+    Velocity = 0
+
+    self.testVar1 += 1
+
+    if(self.testVar1 > 800 and self.testVar1 < 900):
+        Velocity += self.robot.GetBaseLinearVelocity()[0]
+        instantaneous_motor_power = (self.robot.GetMotorTorques()*self.robot.GetMotorVelocities())
+        power = sum(instantaneous_motor_power)
+        abspower = sum(abs(instantaneous_motor_power))
+        for n in range(len(instantaneous_motor_power)):
+          if(instantaneous_motor_power[n] > 0):
+                zeropower += instantaneous_motor_power[n]
+        self.testVar2 += Velocity*0.01 #0.01 = timestep*actionrepeat
+        self.testVar3 += power*0.01
+        self.testVar4 += abspower*0.01
+        self.testVar5 += zeropower*0.01
+        self.testVar7 += self.robot.GetContactInfo()[3][0]*0.01
+
+    if(self.testVar1 == 900):
+        print("mass",m)
+        print("steady state velocity",self.testVar2)
+        print("average Power at steady state",self.testVar3)
+        print("average Absolut power at steady state", self.testVar4)
+        print("average zero power at steady state", self.testVar5)
+        print("Power CoT",self.testVar3/(m*g*self.testVar2))
+        print("Absolut power CoT", self.testVar4/(m*g*self.testVar2))
+        print("zero power CoT", self.testVar5/(m*g*self.testVar2))
+        print("Duty Cycle :", self.testVar7)
 
     self._last_base_position = current_base_position
     self._last_motor_angle = current_motor_angle
@@ -434,7 +472,19 @@ class QuadrupedGymEnv(gym.Env):
     self._env_step_counter += 1
     reward = self._reward()
     done = False
+
+    #self.testVar7 += self.robot.GetContactInfo()[3][0]
+
     if self._termination() or self.get_sim_time() > self._MAX_EP_LEN:
+      #avg_speed = self._action_repeat*self.testVar6/self._sim_step_counter
+      #time_sim = self.get_sim_time()
+      #current_pos = self.robot.GetBasePosition()
+      #duty_cycle = self.testVar7/self._sim_step_counter
+      #print("Robot position",current_pos[0])
+      #print("Average Speed :",avg_speed)
+      #print("time of end", time_sim)
+      #print("Duty Cycle :", duty_cycle)
+
       done = True
 
     return np.array(self._noisy_observation()), reward, done, {'base_pos': self.robot.GetBasePosition()}
@@ -444,6 +494,15 @@ class QuadrupedGymEnv(gym.Env):
   ######################################################################################
   def reset(self):
     """ Set up simulation environment. """
+
+    self.testVar1=0
+    self.testVar2=0
+    self.testVar3=0
+    self.testVar4=0
+    self.testVar5=0
+    self.testVar6=0
+    self.testVar7=0
+
     mu_min = 0.5
     if self._hard_reset:
       # set up pybullet simulation
